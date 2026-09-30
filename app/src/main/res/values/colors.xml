@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Pink backdrop for the adaptive icon, matching the KlinRead artwork.
+
+      The foreground drawable carries only the book, so this colour fills the
+      rest of whatever shape the launcher masks the icon into.
+    -->
+    <color name="ic_launcher_background">#FF9BD2</color>
+</resources>

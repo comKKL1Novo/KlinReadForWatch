@@ -1,0 +1,27 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Android build output. The release APK is a build product; it is published as a
+# release asset rather than committed, and at ~1.8 MB it would bloat every clone.
+/app/build
+*.apk
+*.aab
+
+# Signing material must never enter version control.
+#
+# keystore/watch-release.jks holds the key this app is signed with, and its
+# password is in app/build.gradle.kts. Committing either would let anyone
+# publish an update that installs over the real app.
+*.jks
+*.keystore
+
+# Kotlin incremental compilation state.
+.kotlin
