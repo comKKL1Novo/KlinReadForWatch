@@ -13,8 +13,10 @@ android {
         applicationId = "com.klin.read"
         minSdk = 24
         targetSdk = 36
-        versionCode = 110
-        versionName = "1.1.0"
+        // versionCode = 版本号去掉点号：1.0.0 -> 100，1.2.3 -> 123。
+        // 前提是每一段都不超过 9；出现两位数（如 1.10.0）会与前一段撞号。
+        versionCode = 100
+        versionName = "1.0.0"
     }
 
     /**
