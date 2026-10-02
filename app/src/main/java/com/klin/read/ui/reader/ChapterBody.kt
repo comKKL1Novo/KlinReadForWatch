@@ -18,8 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.klin.read.data.ReaderSettings
+import com.klin.read.ui.design.Space
 
 /**
  * Body of a chapter, rendered as scrolling paragraphs.
@@ -93,10 +95,15 @@ fun ChapterBody(
                 color = palette.text,
                 fontSize = (settings.fontSizeSp + 4).sp,
                 fontWeight = FontWeight.SemiBold,
+                // The skill's headline tracking. Chinese does not need negative
+                // tracking the way Latin does, but applying it keeps mixed
+                // Chinese/Latin chapter titles from looking loose, and matches the
+                // app's own headlines.
+                letterSpacing = (-0.022).em,
                 lineHeight = ((settings.fontSizeSp + 4) * settings.lineHeightMultiplier).sp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 18.dp)
+                    .padding(bottom = Space.md)
             )
         }
 
@@ -106,6 +113,7 @@ fun ChapterBody(
                 color = palette.text,
                 fontSize = settings.fontSizeSp.sp,
                 lineHeight = (settings.fontSizeSp * settings.lineHeightMultiplier).sp,
+                letterSpacing = (-0.011).em,
                 // Stated explicitly even though it is the default: wrapping is the
                 // behaviour reported as missing, and the LazyColumn supplies the
                 // width after the horizontal padding above.
@@ -125,13 +133,14 @@ fun ChapterBody(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(top = 28.dp, bottom = 8.dp),
+                        .padding(top = Space.lg, bottom = Space.sm),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = "继续下滑进入下一章",
                         color = palette.secondary,
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        letterSpacing = (-0.011).em
                     )
                 }
             }

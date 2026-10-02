@@ -19,14 +19,21 @@ data class ShelfCategory(
         const val UNREAD = "__unread__"
         const val READING = "__reading__"
         const val FINISHED = "__finished__"
-        const val UNCATEGORIZED = "__uncategorized__"
 
         /**
-         * Built-in filters, in display order. Custom categories follow these.
+         * The reading-state filters, in display order. Custom categories follow.
          *
          * [started] maps a book id to whether it has been opened at all, because
-         * "未读" means never started — not merely unfinished. That fact lives in
+         * "未读" means never started -- not merely unfinished. That fact lives in
          * ReaderPreferences, not in the book row, so the caller supplies it.
+         *
+         * There is deliberately no "未分类" chip here. It used to be one of these,
+         * but it answers a different question -- "has the user put this in a custom
+         * category" rather than "has the user read this" -- and putting the two on
+         * one row made the row read as a single confusing scale. A book is either
+         * 未读, 在读 or 读完, always exactly one of the three, and those three plus
+         * 全部 are the whole row. A custom category still gets its own chip when the
+         * user creates one; uncategorised books are simply not in it.
          */
         fun builtIn(
             books: List<BookEntity>,
@@ -43,12 +50,7 @@ data class ShelfCategory(
                 "在读",
                 books.count { !it.isFinished && started(it) }
             ),
-            ShelfCategory(FINISHED, "读完", books.count { it.isFinished }),
-            ShelfCategory(
-                UNCATEGORIZED,
-                "未分类",
-                books.count { it.category.isNullOrBlank() }
-            )
+            ShelfCategory(FINISHED, "读完", books.count { it.isFinished })
         )
 
         /** Custom categories present on the shelf, with counts. */
@@ -61,14 +63,18 @@ data class ShelfCategory(
     }
 }
 
-/** Applies [category] to [books], preserving the shelf's own ordering. */
+/**
+ * Applies [category] to [books], preserving the shelf's own ordering.
+ *
+ * The four built-in keys cover reading state; anything else is a custom category
+ * name after the `cat:` prefix.
+ */
 fun List<BookEntity>.filterBy(
     category: ShelfCategory,
     started: (BookEntity) -> Boolean
 ): List<BookEntity> = when (category.key) {
     ShelfCategory.ALL -> this
     ShelfCategory.FINISHED -> filter { it.isFinished }
-    ShelfCategory.UNCATEGORIZED -> filter { it.category.isNullOrBlank() }
     ShelfCategory.UNREAD -> filter { !it.isFinished && !started(it) }
     ShelfCategory.READING -> filter { !it.isFinished && started(it) }
     else -> {

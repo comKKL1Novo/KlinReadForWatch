@@ -19,6 +19,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+// The grid's `items` and the LazyRow's `items` share a name but have different
+// receiver scopes; the grid one is aliased so both can be used in this file.
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,12 +47,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.klin.read.data.BookEntity
 import com.klin.read.data.ReadingStats
 import com.klin.read.ui.design.Chip
+import com.klin.read.ui.design.Clearance
 import com.klin.read.ui.design.EmptyHint
 import com.klin.read.ui.design.FlatTextField
 import com.klin.read.ui.design.Hairline
@@ -55,6 +63,7 @@ import com.klin.read.ui.design.LocalColors
 import com.klin.read.ui.design.Panel
 import com.klin.read.ui.design.PrimaryButton
 import com.klin.read.ui.design.QuietButton
+import com.klin.read.ui.design.Radius
 import com.klin.read.ui.design.ScreenTitle
 import com.klin.read.ui.design.SectionLabel
 import com.klin.read.ui.design.Space
@@ -82,6 +91,15 @@ fun ShelfScreen(
     val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
 
+    // Which book's long-press actions sheet is open, if any.
+    //
+    // Hoisted to the screen rather than kept inside each card: the sheet needs the
+    // full list of custom categories, which a card does not have, and holding it
+    // here means at most one sheet can exist. When it lived inside the row the same
+    // state was duplicated per row, so a fast scroll could leave two sheets
+    // remembering themselves as open.
+    var actionsFor by remember { mutableStateOf<BookEntity?>(null) }
+
     // SAF picker. The app declares no storage permission because the picker grants
     // access per file.
     val picker = rememberLauncherForActivityResult(
@@ -106,24 +124,34 @@ fun ShelfScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(
+        LazyVerticalGrid(
+            // Two columns, not the phone's three. At 372px a third column leaves
+            // each cover about 100px wide -- smaller than the row thumbnail this
+            // grid replaces -- so two is the most that still enlarges the artwork.
+            columns = GridCells.Fixed(2),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = Space.lg,
                 end = Space.lg,
                 top = Space.xl,
-                bottom = 130.dp
+                bottom = Clearance.listBottom
             ),
-            verticalArrangement = Arrangement.spacedBy(Space.sm)
+            horizontalArrangement = Arrangement.spacedBy(Space.md),
+            verticalArrangement = Arrangement.spacedBy(Space.md)
         ) {
-            item { ScreenTitle("书架") }
+            // Full-width header rows span both columns.
+            item(span = { GridItemSpan(maxLineSpan) }) { ScreenTitle("书架") }
 
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                KnownIssueBanner()
+            }
+
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 ReadingTimeCard(stats)
             }
 
             if (books.isEmpty()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     EmptyHint(
                         title = "书架是空的",
                         detail = "点下面的「导入书籍」选择本机的电子书"
@@ -132,7 +160,7 @@ fun ShelfScreen(
             } else {
                 // Category filters with counts. Horizontally scrollable so a long
                 // list of custom categories never wraps or clips on a 372px screen.
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(Space.sm),
                         contentPadding = PaddingValues(vertical = Space.xs)
@@ -148,28 +176,50 @@ fun ShelfScreen(
                 }
 
                 if (visible.isEmpty()) {
-                    item {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
                         EmptyHint(
                             title = "这个分类还没有书",
                             detail = "换一个分类看看，或导入新的电子书"
                         )
                     }
                 } else {
-                    items(visible, key = { it.id }) { book ->
-                        BookRow(
+                    gridItems(visible, key = { it.id }) { book ->
+                        BookCard(
                             book = book,
                             progress = viewModel.progressFor(book),
                             onClick = { onOpenBook(book.id) },
-                            onRemove = { viewModel.remove(book) },
-                            onToggleFinished = { viewModel.toggleFinished(book) },
-                            onSetCategory = { name -> viewModel.setCategory(book, name) },
-                            existingCategories = categories
-                                .filter { it.key.startsWith("cat:") }
-                                .map { it.label }
+                            // The card owns the long-press gesture; the sheet is
+                            // hoisted here because it needs the whole category
+                            // list, which a card does not have.
+                            onLongClick = { actionsFor = book }
                         )
                     }
                 }
             }
+        }
+
+        // The actions sheet for the long-pressed book.
+        val target = actionsFor
+        if (target != null) {
+            BookActionsSheet(
+                book = target,
+                existingCategories = categories
+                    .filter { it.key.startsWith("cat:") }
+                    .map { it.label },
+                onDismiss = { actionsFor = null },
+                onToggleFinished = {
+                    actionsFor = null
+                    viewModel.toggleFinished(target)
+                },
+                onSetCategory = { name ->
+                    actionsFor = null
+                    viewModel.setCategory(target, name)
+                },
+                onRemove = {
+                    actionsFor = null
+                    viewModel.remove(target)
+                }
+            )
         }
 
         // Import pinned to the bottom, above the navigation bar.
@@ -178,48 +228,61 @@ fun ShelfScreen(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(horizontal = Space.lg)
-                .padding(bottom = 104.dp)
+                .padding(bottom = Clearance.bottomBar)
         ) {
-            // While importing, the button becomes a progress bar. Parsing a long
-            // book takes seconds on a watch, and without feedback the app looks
-            // frozen -- which is exactly how the slow import was described.
-            if (importing) {
-                Column {
-                    Text(
-                        text = "正在导入 ${(importProgress * 100).toInt()}%",
-                        color = c.inkMuted,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = Space.sm)
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(c.surfaceMuted)
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth(importProgress.coerceIn(0f, 1f))
-                                .height(4.dp)
-                                .background(c.accent)
-                        )
-                    }
-                }
-            } else {
-                PrimaryButton(
-                    text = "导入书籍",
-                    onClick = { picker.launch(arrayOf("*/*")) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            PrimaryButton(
+                text = "导入书籍",
+                onClick = { picker.launch(arrayOf("*/*")) },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         SnackbarHost(
             hostState = snackbar,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 170.dp)
+                .padding(bottom = Clearance.shelfBottom)
+        )
+    }
+}
+
+
+/**
+ * Notice about a defect that is known and not yet fixed.
+ *
+ * Shown on the shelf rather than buried in Settings because it describes behaviour
+ * the reader hits while using the shelf: EPUB progress is recorded against the
+ * wrong position, so the progress bar and the 未读/在读/读完 classification can
+ * disagree with what was actually read.
+ *
+ * Shorter than the phone build's wording: on a 372px screen the two-line version
+ * wraps to four and pushes the first row of books off the display.
+ *
+ * Delete this composable and its call site once position handling is fixed.
+ */
+@Composable
+private fun KnownIssueBanner() {
+    val c = LocalColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radius.button))
+            .background(c.surfaceMuted)
+            .padding(horizontal = Space.sm, vertical = Space.xs),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = "!",
+            color = c.danger,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(end = Space.xs)
+        )
+        Text(
+            text = "EPUB 阅读进度识别有误，下版修复",
+            color = c.ink,
+            fontSize = 11.sp,
+            letterSpacing = (-0.011).em
         )
     }
 }
@@ -299,161 +362,6 @@ private fun ReadingTimeCard(stats: ReadingStats) {
             color = c.inkMuted,
             fontSize = 12.5.sp
         )
-    }
-}
-
-/**
- * One book, as a cover thumbnail plus its details.
- *
- * Sized for a watch: a 44x62dp cover rather than the phone's 62x88dp, and two
- * lines of text at most. Long-press opens the actions sheet, since a watch popup
- * menu has no room for per-row buttons.
- */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun BookRow(
-    book: BookEntity,
-    progress: Float,
-    onClick: () -> Unit,
-    onRemove: () -> Unit,
-    onToggleFinished: () -> Unit,
-    onSetCategory: (String?) -> Unit,
-    existingCategories: List<String>
-) {
-    val c = LocalColors.current
-    var showMenu by remember { mutableStateOf(false) }
-
-    if (showMenu) {
-        BookActionsSheet(
-            book = book,
-            existingCategories = existingCategories,
-            onDismiss = { showMenu = false },
-            onToggleFinished = {
-                showMenu = false
-                onToggleFinished()
-            },
-            onSetCategory = { name ->
-                showMenu = false
-                onSetCategory(name)
-            },
-            onRemove = {
-                showMenu = false
-                onRemove()
-            }
-        )
-    }
-
-    Panel(
-        modifier = Modifier
-            .fillMaxWidth()
-            // Long-press opens the actions sheet; a tap opens the book.
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = { showMenu = true }
-            ),
-        contentPadding = 0.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(Space.sm),
-            verticalAlignment = Alignment.Top
-        ) {
-            BookCover(
-                book = book,
-                modifier = Modifier.size(width = 44.dp, height = 62.dp)
-            )
-
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(start = Space.sm, top = 2.dp)
-            ) {
-                Text(
-                    text = book.title,
-                    color = c.ink,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = buildString {
-                        append(book.format)
-                        if (book.charCount > 0) {
-                            append(" · ")
-                            append(formatCharCount(book.charCount))
-                        }
-                    },
-                    color = c.inkMuted,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-
-                Spacer(Modifier.height(Space.xs))
-
-                // Reading progress, matching the slider track.
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(c.surfaceMuted)
-                ) {
-                    if (progress > 0f) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth(progress.coerceIn(0f, 1f))
-                                .height(3.dp)
-                                .background(c.accent)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * The cover thumbnail.
- *
- * A cached cover is loaded through Coil; otherwise a generated fill with the
- * title's first character is drawn. A finished book gets a corner badge.
- */
-@Composable
-private fun BookCover(book: BookEntity, modifier: Modifier = Modifier) {
-    val c = LocalColors.current
-    Box(modifier = modifier.clip(RoundedCornerShape(8.dp))) {
-        val coverPath = book.coverPath
-        if (coverPath != null) {
-            AsyncImage(
-                model = File(coverPath),
-                contentDescription = book.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            GeneratedCover(title = book.title, modifier = Modifier.fillMaxSize())
-        }
-
-        // "读完" marker, pinned to the top-right of the cover.
-        if (book.isFinished) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(2.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(c.accent)
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
-            ) {
-                Text(
-                    text = "完",
-                    color = c.accentInk,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
     }
 }
 
@@ -566,3 +474,4 @@ private fun BookActionsSheet(
         }
     }
 }
+

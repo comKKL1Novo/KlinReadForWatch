@@ -16,8 +16,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -55,21 +57,38 @@ class ShelfViewModel(app: Application) : AndroidViewModel(app) {
     val selected: StateFlow<String> = _selected.asStateFlow()
 
     /**
+     * Last known reading position per book, kept live by the init block below.
+     *
+     * A [MutableStateFlow] rather than a plain map: the chips and progress bars are
+     * derived from it, and a plain map mutating after the first composition would
+     * leave the shelf showing stale counts until something else triggered a
+     * recomposition.
+     */
+    private val positionCache = MutableStateFlow<Map<Long, ReaderPreferences.Position>>(emptyMap())
+
+    /**
      * Filter chips with live counts.
      *
-     * Counts are computed once per book-list change inside the flow, not per
-     * recomposition: on a watch, walking the shelf on every frame is exactly the
-     * kind of avoidable work that shows up as jank.
+     * Counts are computed once per book-list or position change inside the flow,
+     * not per recomposition: on a watch, walking the shelf on every frame is
+     * exactly the kind of avoidable work that shows up as jank.
+     *
+     * [positionCache] is part of the combine because whether a book counts as
+     * started depends on its saved position. Without it the chips were computed
+     * against an empty cache and never recomputed, so a book stayed in "未读" no
+     * matter how much of it was read -- reported as "读了没反应".
      */
     val categories: StateFlow<List<ShelfCategory>> = books
-        .combine(dao.observeCategories()) { list, _ ->
+        .combine(dao.observeCategories()) { list, _ -> list }
+        .combine(positionCache) { list, _ ->
             ShelfCategory.builtIn(list) { isStarted(it.id) } + ShelfCategory.custom(list)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Books matching the selected chip. */
     val visibleBooks: StateFlow<List<BookEntity>> = books
-        .combine(_selected) { list, key ->
+        .combine(_selected) { list, key -> list to key }
+        .combine(positionCache) { (list, key), _ ->
             val category = (ShelfCategory.builtIn(list) { isStarted(it.id) } +
                 ShelfCategory.custom(list))
                 .firstOrNull { it.key == key }
@@ -85,11 +104,19 @@ class ShelfViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Whether [bookId] has ever been opened.
      *
-     * Backed by the chapter cache: a saved chapter index greater than zero means
-     * the reader got at least one page in. Read synchronously so the filter chips
-     * can be built without a suspending call per book.
+     * True when there is ANY saved reading position, i.e. a non-zero character
+     * offset OR a chapter past the first.
+     *
+     * This used to test `chapterIndex > 0` alone, which meant a reader who had
+     * opened a book and read the whole of chapter one still showed as "未读":
+     * chapter one is index 0, so the test never fired until they reached chapter
+     * two. Reported as "读了没反应". The offset is the honest signal -- it is
+     * written as soon as the reader scrolls or pages at all.
      */
-    private fun isStarted(bookId: Long): Boolean = (chapterCache[bookId] ?: 0) > 0
+    private fun isStarted(bookId: Long): Boolean {
+        val saved = positionCache.value[bookId] ?: return false
+        return saved.opened || saved.charOffset > 0 || saved.chapterIndex > 0
+    }
 
     /**
      * How far through [book] the reader is, 0f..1f.
@@ -100,31 +127,57 @@ class ShelfViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun progressFor(book: BookEntity): Float {
         if (book.isFinished) return 1f
+
+        val saved = positionCache.value[book.id]
+        if (saved != null && book.charCount > 0 && saved.charOffset > 0) {
+            return (saved.charOffset.toFloat() / book.charCount).coerceIn(0f, 1f)
+        }
+
         if (book.charCount <= 0) return 0f
-        val chapter = cachedChapter(book.id)
+
+        /*
+         * A book that has been opened but sits in chapter one reads as just started
+         * rather than as 0%. Chapter one is offset 0 / index 0, so every signal the
+         * shelf has says "the beginning" -- and a 0% bar on a book you are actively
+         * reading looks like the same "nothing happened" bug as the chip counts.
+         */
+        val openedButAtStart = saved?.opened == true && saved.charOffset == 0 &&
+            saved.chapterIndex == 0
+        if (openedButAtStart) return 0.01f
+
+        val chapter = saved?.chapterIndex ?: 0
         if (chapter <= 0) return 0f
-        // Chapters are a proxy for position; a precise offset needs the parsed
-        // text, which the shelf deliberately does not load.
+        // Chapters are a coarse proxy when the offset is unavailable; the chapter
+        // ratio alone returned 0f for anything still in chapter one, so the bar sat
+        // empty no matter how much of that chapter had been read.
         return (chapter.toFloat() / maxOf(chapter + 1, chapterCountHint(book))).coerceIn(0f, 1f)
     }
-
-    /** Last known chapter per book, filled by [refreshProgress]. */
-    private val chapterCache = mutableMapOf<Long, Int>()
-
-    private fun cachedChapter(bookId: Long): Int = chapterCache[bookId] ?: 0
 
     private fun chapterCountHint(book: BookEntity): Int =
         // Roughly one chapter per 8000 characters, which is typical for a novel.
         (book.charCount / 8000).coerceAtLeast(1)
 
     init {
-        // Populate the chapter cache once so the progress bars have a value.
+        /*
+         * Keep [positionCache] live, not a one-shot snapshot.
+         *
+         * Subscribes to the whole DataStore rather than to `books` plus a
+         * `prefs.position(id)` flow per book. Two earlier attempts failed on the
+         * phone build, and the same code was here:
+         *
+         *   1. `.first()` inside this init block took a snapshot at ViewModel
+         *      creation, so reading a chapter and returning to the shelf showed the
+         *      state from before the book was opened.
+         *   2. Reading the position flows inside `books.collectLatest` meant a
+         *      position written while the reader was on top of the shelf had no
+         *      subscriber left to receive it.
+         *
+         * Subscribing to `dataStore.data` directly is the reliable form: it emits on
+         * every preference write, whoever wrote it.
+         */
         viewModelScope.launch {
-            books.collect { list ->
-                list.forEach { book ->
-                    val saved = prefs.position(book.id).first()
-                    chapterCache[book.id] = saved.chapterIndex
-                }
+            prefs.observePositions().collect { positions ->
+                positionCache.value = positions
             }
         }
     }

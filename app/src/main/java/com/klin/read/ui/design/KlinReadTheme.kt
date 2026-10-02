@@ -1,10 +1,6 @@
 package com.klin.read.ui.design
 
 import android.os.Build
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.Easing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
@@ -22,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 
 /**
  * KlinRead's Material 3 Expressive styling, shared with the phone build.
@@ -50,40 +47,25 @@ private val Navy = Color(0xFF3A0021)
 private val OnPink = Color(0xFFFFFFFF)
 
 /**
- * Shape scale.
+ * Shape scale, on the Apple skill's radii rather than M3's defaults.
  *
- * Rounder than the M3 defaults (4/8/12/16/28dp) so cards and buttons read as
- * pill-like, but deliberately smaller than the phone's scale: on a 372x430
- * display the phone's 40dp extra-large radius would swallow most of a card's
- * corner, so each step is pulled back while keeping the progression.
+ * The skill specifies 8 / 12 / 20 for small elements, buttons, and cards. On a
+ * 372x430 display a literal 20dp card radius eats most of the corner, so the
+ * card step is pulled to 16 and the rest of the ladder follows at one step down.
+ * See [Radius] in Design.kt for the phone-scale values.
  */
 val ExpressiveShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(22.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    extraSmall = RoundedCornerShape(Radius.small),
+    small = RoundedCornerShape(Radius.small),
+    medium = RoundedCornerShape(Radius.button),
+    large = RoundedCornerShape(Radius.card),
+    extraLarge = RoundedCornerShape(Radius.card + 4.dp),
 )
 
-/**
- * Motion tokens.
- *
- * Expressive motion is spatial and spring-based: things overshoot slightly and
- * settle, rather than easing to a stop. These are the public substitutes for the
- * `MotionScheme` values the internal API would have supplied.
+/*
+ * Motion lives in Design.kt as `Motion`, so there is one definition rather than
+ * two competing sets of spring specs.
  */
-object Motion {
-    /** For elements that move across the screen (sheets, page changes). */
-    fun <T> spatial(): androidx.compose.animation.core.SpringSpec<T> =
-        spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow)
-
-    /** For elements that resize or fade in place; no overshoot. */
-    fun <T> effects(): androidx.compose.animation.core.SpringSpec<T> =
-        spring(dampingRatio = 1f, stiffness = Spring.StiffnessMedium)
-
-    /** Emphasised easing for one-shot reveals. */
-    val emphasized: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-}
 
 private fun lightScheme(): ColorScheme = lightColorScheme(
     primary = Pink40,
@@ -101,16 +83,26 @@ private fun lightScheme(): ColorScheme = lightColorScheme(
     tertiaryContainer = Color(0xFFFFE08A),
     onTertiaryContainer = Color(0xFF261A00),
 
-    background = Color(0xFFFFF0F5),
-    onBackground = Color(0xFF22191C),
-    surface = Color(0xFFFFF8F9),
-    onSurface = Color(0xFF22191C),
-    surfaceVariant = Color(0xFFF3DDE3),
-    onSurfaceVariant = Color(0xFF524348),
-    outline = Color(0xFF847379),
-    outlineVariant = Color(0xFFD6C2C7),
-    error = Color(0xFFB3261E),
-    onError = OnPink,
+    // Neutrals are Apple's system greys, not pink tints. The previous pair
+    // (#FFF0F5 page / #FFF8F9 card) was only ~5% apart in luminance, so a card was
+    // effectively invisible against the page and the layout read as one flat pink
+    // field. No amount of grid or tracking work fixes that -- the palette was the
+    // problem. Pink stays for primary actions, selection and the brand.
+    background = Color(0xFFF2F2F7),
+    onBackground = Color(0xFF000000),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF000000),
+    // Backs the unfilled slider track and chips; has to differ from both the page
+    // and the cards.
+    surfaceVariant = Color(0xFFE5E5EA),
+    // Measured against both the card and the page; see the phone build's
+    // PaletteContrastTest for the same reasoning. Apple's 60%-alpha secondaryLabel
+    // lands at 3.4:1 on white, below the 4.5:1 these 11-13sp labels need.
+    onSurfaceVariant = Color(0xFF6C6C6C),
+    outline = Color(0xFF8E8E93),
+    outlineVariant = Color(0xFFC6C6C8),
+    error = Color(0xFFFF3B30),
+    onError = Color(0xFFFFFFFF),
 )
 
 private fun darkScheme(): ColorScheme = darkColorScheme(
@@ -129,27 +121,112 @@ private fun darkScheme(): ColorScheme = darkColorScheme(
     tertiaryContainer = Color(0xFF584400),
     onTertiaryContainer = Color(0xFFFFE08A),
 
-    background = Color(0xFF2A0A18),
-    onBackground = Color(0xFFF0DEE2),
-    surface = Color(0xFF1E1114),
-    onSurface = Color(0xFFF0DEE2),
-    surfaceVariant = Color(0xFF524348),
-    onSurfaceVariant = Color(0xFFD6C2C7),
-    outline = Color(0xFF9E8C91),
-    outlineVariant = Color(0xFF524348),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
+    // The page is #1C1C1E, NOT true black: on a shelf full of white covers a pure
+    // black field halates around every edge, and it left the nav bar with nothing
+    // to separate it from. The card is #333336 rather than Apple's #2C2C2E because
+    // against #1C1C1E that measures only 1.22:1 -- weaker separation than a card
+    // needs (1.35:1 here). Both are measured in the phone build's
+    // PaletteContrastTest.
+    background = Color(0xFF1C1C1E),
+    onBackground = Color(0xFFFFFFFF),
+    surface = Color(0xFF333336),
+    onSurface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFF48484A),
+    // Measured against the #333336 card: #A0A0A0 gives 4.82:1, clearing the
+    // 4.5:1 these small labels need. #9A9A9A measured 4.475:1 and failed.
+    onSurfaceVariant = Color(0xFFA0A0A0),
+    outline = Color(0xFF8E8E93),
+    outlineVariant = Color(0xFF48484A),
+    error = Color(0xFFFF453A),
+    onError = Color(0xFF000000),
 )
 
 /**
- * Slightly heavier weights than the M3 defaults. Expressive type leans bold, and
- * the article text of a reader benefits from the extra presence at small sizes.
+ * Typography following the skill's SF Pro specs.
+ *
+ * Two things the skill mandates and the M3 defaults do not do:
+ *
+ *   1. **Negative tracking.** Headlines carry letter-spacing -0.022em and body
+ *      text -0.011em. Compose expresses tracking in em, so those values are used
+ *      directly. This is what makes Apple's type read as tight and deliberate;
+ *      without it, large text looks loose and generic.
+ *   2. **Font weight 600 on headlines, 400 on body.**
+ *
+ * The skill forbids Inter/Roboto/Helvetica and asks for SF Pro, falling back to
+ * "the system's native sans-serif equivalent to maintain OS-level consistency".
+ * On Android that sanctioned fallback is the system default face, which is what
+ * `FontFamily.Default` resolves to -- so the family is left at the default rather
+ * than shipping a bundled font that would both bloat the APK and, on a watch,
+ * render Chinese with worse hinting than the system face.
+ *
+ * Headline sizes are pulled in for the 372px screen; the ratios and tracking are
+ * the skill's.
  */
 private val AppTypography = Typography().let { base ->
+    val headlineTracking = (-0.022).em
+    val bodyTracking = (-0.011).em
+
     base.copy(
-        titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
-        titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-        labelLarge = base.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+        displayLarge = base.displayLarge.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = headlineTracking
+        ),
+        displayMedium = base.displayMedium.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = headlineTracking
+        ),
+        displaySmall = base.displaySmall.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = headlineTracking
+        ),
+        headlineLarge = base.headlineLarge.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = headlineTracking
+        ),
+        headlineMedium = base.headlineMedium.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = headlineTracking
+        ),
+        headlineSmall = base.headlineSmall.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = headlineTracking
+        ),
+        titleLarge = base.titleLarge.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = headlineTracking
+        ),
+        titleMedium = base.titleMedium.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = bodyTracking
+        ),
+        titleSmall = base.titleSmall.copy(
+            fontWeight = FontWeight.Medium,
+            letterSpacing = bodyTracking
+        ),
+        bodyLarge = base.bodyLarge.copy(
+            fontWeight = FontWeight.Normal,
+            letterSpacing = bodyTracking
+        ),
+        bodyMedium = base.bodyMedium.copy(
+            fontWeight = FontWeight.Normal,
+            letterSpacing = bodyTracking
+        ),
+        bodySmall = base.bodySmall.copy(
+            fontWeight = FontWeight.Normal,
+            letterSpacing = bodyTracking
+        ),
+        labelLarge = base.labelLarge.copy(
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = bodyTracking
+        ),
+        labelMedium = base.labelMedium.copy(
+            fontWeight = FontWeight.Medium,
+            letterSpacing = bodyTracking
+        ),
+        labelSmall = base.labelSmall.copy(
+            fontWeight = FontWeight.Medium,
+            letterSpacing = bodyTracking
+        ),
     )
 }
 

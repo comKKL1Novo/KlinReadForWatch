@@ -33,8 +33,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.klin.read.R
+import com.klin.read.ui.design.Space
 import kotlinx.coroutines.delay
 
 /**
@@ -106,9 +108,13 @@ fun SplashScreen(
         label = "progress"
     )
 
+    // Deliberately literal, not theme roles. This screen renders outside
+    // KlinReadTheme, so reading MaterialTheme here would silently yield the M3
+    // defaults rather than the app's palette -- the reason the splash was made
+    // fixed-dark in the first place. Spacing below is on the 8pt grid.
     val canvas = Color(0xFF141414)
     val ink = Color(0xFFEDEBE7)
-    val faint = Color(0xFF7C7872)
+    val faint = Color(0xFF9A958D)
 
     Box(
         modifier = Modifier
@@ -118,7 +124,9 @@ fun SplashScreen(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(horizontal = 48.dp)
+            // 48dp was a bare literal; Space.xl is the same value and now the
+            // splash is on the same scale as every other screen.
+            modifier = Modifier.padding(horizontal = Space.xl)
         ) {
             // The icon is drawn as a circle, with no backing plate.
             //
@@ -135,17 +143,19 @@ fun SplashScreen(
                     .clip(CircleShape)
             )
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(Space.md))
 
             Text(
                 text = "KlinRead",
                 color = ink,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.SemiBold,
+                // The skill's headline tracking.
+                letterSpacing = (-0.022).em,
                 modifier = Modifier.alpha(titleAlpha)
             )
 
-            Spacer(Modifier.height(34.dp))
+            Spacer(Modifier.height(Space.xl))
 
             Box(
                 modifier = Modifier
@@ -163,13 +173,14 @@ fun SplashScreen(
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(Space.md))
 
             // Line of the day: smaller and dimmer than the title.
             Text(
                 text = caption,
                 color = faint,
                 fontSize = 12.sp,
+                letterSpacing = (-0.011).em,
                 textAlign = TextAlign.Center,
                 lineHeight = 18.sp,
                 modifier = Modifier

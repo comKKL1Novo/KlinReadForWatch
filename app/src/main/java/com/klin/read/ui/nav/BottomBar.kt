@@ -38,8 +38,12 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.klin.read.ui.design.LocalColors
+import com.klin.read.ui.design.LocalDarkTheme
+import com.klin.read.ui.design.Motion
+import com.klin.read.ui.design.Space
 
 enum class HomeTab(val label: String) {
     SHELF("书架"),
@@ -59,11 +63,20 @@ enum class HomeTab(val label: String) {
 /**
  * Floating pill navigation bar with a frosted-glass treatment.
  *
+ * The skill's navigation-bar blueprint: a sticky, elevated surface carrying the
+ * glass material (translucent fill + blur + 0.5px hairline) and a bottom border.
  * The bar is inset from the screen edges and fully rounded, so the app background
  * shows around it -- that is what makes it read as a floating control rather than
- * part of the chrome. The glass look comes from a translucent fill, a brighter
- * 1dp rim and a soft sheen; a real backdrop blur needs API 31+, so the fill is
- * tuned to work over the flat background at any version.
+ * part of the chrome.
+ *
+ * The blur half of the material is not reproducible here: `Modifier.blur` needs
+ * API 31+ and the watch runs Android 11, where it would silently do nothing.
+ * A vertical gradient over a translucent fill is the portable substitute, and it
+ * is what gives the surface its depth on this device.
+ *
+ * Spacing is on the 8pt grid, and the tokens come from [AppColors] rather than
+ * local hardcoded whites, so the bar follows the theme instead of drifting from
+ * it.
  */
 @Composable
 fun BottomBar(
@@ -72,13 +85,13 @@ fun BottomBar(
     modifier: Modifier = Modifier
 ) {
     val c = LocalColors.current
-    val dark = c.canvas.luminance() < 0.5f
+    val dark = LocalDarkTheme.current
 
-    // Glass tokens, derived from the palette so the bar follows light/dark.
-    val glassTop = if (dark) Color(0x2EFFFFFF) else Color(0xCCFFFFFF)
-    val glassBottom = if (dark) Color(0x14FFFFFF) else Color(0x99FFFFFF)
-    val rim = if (dark) Color(0x33FFFFFF) else Color(0xD9FFFFFF)
-    val shadow = Color.Black.copy(alpha = if (dark) 0.45f else 0.12f)
+    // Derived from the theme's glass tokens, so the bar cannot drift from the
+    // cards it floats above.
+    val glassTop = if (dark) c.glassFill.copy(alpha = 0.82f) else c.glassFill.copy(alpha = 0.92f)
+    val glassBottom = if (dark) c.glassFill.copy(alpha = 0.55f) else c.glassFill.copy(alpha = 0.78f)
+    val rim = c.glassBorder
 
     val pill: Shape = RoundedCornerShape(999.dp)
 
@@ -86,16 +99,17 @@ fun BottomBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 28.dp, vertical = 10.dp)
+            .padding(horizontal = Space.xl, vertical = Space.sm)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(pill)
                 .background(Brush.verticalGradient(listOf(glassTop, glassBottom)))
-                .border(1.dp, rim, pill)
+                .border(0.5.dp, rim, pill)
                 .drawBehind {
-                    // Sheen: a brighter band across the top inner edge.
+                    // Sheen: a brighter band across the top inner edge. This is
+                    // the skill's "material depth" read without a real blur.
                     drawRect(
                         brush = Brush.verticalGradient(
                             colors = listOf(
@@ -110,13 +124,13 @@ fun BottomBar(
                     // extra layer is needed.
                     drawRect(
                         brush = Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, shadow),
+                            colors = listOf(Color.Transparent, c.glassShadow),
                             startY = size.height * 0.7f,
                             endY = size.height
                         )
                     )
                 }
-                .padding(horizontal = 6.dp, vertical = 8.dp),
+                .padding(horizontal = Space.xs, vertical = Space.sm),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -142,14 +156,22 @@ private fun GlassTabItem(
     val c = LocalColors.current
     val tint by animateColorAsState(
         targetValue = if (selected) c.ink else c.inkFaint,
+        animationSpec = androidx.compose.animation.core.tween(
+            durationMillis = Motion.STANDARD_MS,
+            easing = Motion.standard
+        ),
         label = "tabTint"
     )
+    // Selected items sit at full size; unselected ones pull back. This is the
+    // skill's press/hover scale idea applied to selection state.
     val scale by animateFloatAsState(
         targetValue = if (selected) 1f else 0.94f,
+        animationSpec = Motion.spatial(),
         label = "tabScale"
     )
     val pillAlpha by animateFloatAsState(
         targetValue = if (selected) 1f else 0f,
+        animationSpec = Motion.effects(),
         label = "pillAlpha"
     )
 
@@ -165,7 +187,7 @@ private fun GlassTabItem(
     ) {
         Box(
             modifier = Modifier
-                .size(width = 46.dp, height = 28.dp)
+                .size(width = 44.dp, height = 28.dp)
                 .clip(RoundedCornerShape(999.dp))
                 .background(c.ink.copy(alpha = 0.10f * pillAlpha)),
             contentAlignment = Alignment.Center
@@ -175,7 +197,7 @@ private fun GlassTabItem(
                 contentDescription = tab.label,
                 tint = tint,
                 modifier = Modifier
-                    .size(19.dp)
+                    .size(20.dp)
                     .scale(scale)
             )
         }
@@ -183,11 +205,10 @@ private fun GlassTabItem(
             text = tab.label,
             color = tint,
             fontSize = 10.5.sp,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-            modifier = Modifier.padding(top = 3.dp)
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            letterSpacing = (-0.011).em,
+            maxLines = 1,
+            modifier = Modifier.padding(top = Space.xs)
         )
     }
 }
-
-/** Perceived brightness, used to pick the glass tint. */
-private fun Color.luminance(): Float = 0.2126f * red + 0.7152f * green + 0.0722f * blue
