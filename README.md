@@ -131,14 +131,15 @@ release 用 `keystore/watch-release.jks` 签名（密码 `kkl1nread`）。
 
 ## 测试
 
-31 个单元测试，覆盖解析逻辑与本次同步的修复：
+60 个单元测试，覆盖解析逻辑、章节切分与编码检测：
 
 | 测试类 | 数量 | 覆盖 |
 |---|---|---|
 | `EpubParserTest` | 9 | 含「40 个文档的大书」场景，验证两遍扫描不漏读 |
 | `CoverExtractorTest` | 8 | 封面定位规则（EPUB 3 属性 / EPUB 2 meta）、路径解析、3 MB 上限 |
+| `ChapterSplitterTest` | 18 | 中/阿拉伯/全角数字、独立标题、前言章节、完整性、标题预筛不漏判 |
+| `TextDecoderTest` | 17 | UTF-8 / GB18030 / BOM / UTF-16、过长编码、代理对、非法字节 |
 | `MusicFilterTest` | 8 | 音乐搜索：空查询、大小写、去空格、无匹配 |
-| `TextDecoderTest` | 6 | UTF-8 / GB18030 / BOM |
 
 纯 JVM 逻辑，不需要模拟器。
 
@@ -205,6 +206,79 @@ pwsh tools\run-tests.ps1
 
 ---
 
+## 第二次同步（1.1.0）：Material 3 设计 token 与测试对齐
+
+上一节是**功能**同步。这一次是**设计系统与测试**的同步——手表版在功能上
+（流式解析、低内存）本来就领先，落后的只有配色架构和测试覆盖。
+
+### 配色改为 Material 3 token
+
+手机版把配色从「自己手写的调色板」改成了 Material 3 token，手表版同步跟进：
+
+| 之前 | 现在 |
+|---|---|
+| `Design.kt` 里硬编码 `LightColors` / `DarkColors` 十六进制值 | 全部取自 `MaterialTheme.colorScheme` |
+| `MainActivity` 用 `CompositionLocalProvider` 手工注入 | `KlinReadTheme()` 统一注入 |
+| 设置项与 DataStore key 叫 `darkGlass` / `dark_glass` | `darkTheme` / `dark_theme` |
+
+**关键点**：`LocalColors` 这个间接层两边完全一样，40 多处 `LocalColors.current`
+调用点一行都不用改，只换了它的**数据来源**。所以这次改动虽然触及底层，
+但影响面被限制在一个文件里。
+
+**改 key 不会丢设置**：`dark_glass` 仍作为兜底读取（`LEGACY_DARK_GLASS`）。
+直接改名会让已经选了深色的用户被静默重置成浅色，这不可接受。
+
+### 按手表尺寸调整，而不是照搬
+
+同步时保留了手表版自己的尺寸决策，没有把手机的数值抄过来：
+
+| 项目 | 手机版 | 手表版 | 原因 |
+|---|---|---|---|
+| 间距节奏 | 16 / 24 / 32dp | **14 / 20 / 28dp** | 372×430 的屏幕上手机节奏会把内容挤出屏 |
+| 圆角尺度 | 10 / 16 / 22 / 30 / 40dp | **8 / 12 / 16 / 22 / 28dp** | 40dp 圆角几乎吃掉整张卡片 |
+| 启动画面配色 | 跟随主题 | **固定深色** | 启动页渲染在 `KlinReadTheme` **之外**，读 `MaterialTheme` 只会拿到 M3 默认值 |
+
+### 测试：31 → 60
+
+| 测试类 | 之前 | 现在 | 说明 |
+|---|---|---|---|
+| `EpubParserTest` | 9 | 9 | 流式两遍扫描 |
+| `CoverExtractorTest` | 8 | 8 | 封面定位规则 |
+| `TextDecoderTest` | 6 | **17** | 补齐 BOM、过长编码、代理对、非法字节等 |
+| `ChapterSplitterTest` | 10（混在 EpubParserTest.kt 里） | **18（独立文件）** | 拆出来并补齐用例 |
+| `MusicFilterTest` | 8 | 8 | 音乐搜索 |
+| **合计** | **31** | **60** | |
+
+`ChapterSplitterTest` 现在会真正执行。之前 `tools/run-tests.ps1` 刻意跳过它，
+理由是「两边的实现不同」；但两边的 `split(text)` 对外行为一致，手表版只是在
+内部加了 `mayStartHeading()` 字符预筛。**这组测试正是那个优化的安全网** ——
+预筛一旦漏掉真正的标题，测试就会红。
+
+### 顺手修掉的两个真实问题
+
+- **错误提示看不见**：阅读页加载失败的文字用了硬编码 `Color(0xFF666666)`，
+  在手表深色底（`0xFF0A0A0A`）上几乎不可见。改用 `LocalColors.current.inkMuted`。
+- **「移除」按钮太小**：只有约 24dp 高，容易误触。按 Wear 规范放大到 44dp
+  （手机版是 48dp，在 372px 屏上偏大）。
+
+另外 `Icons.Filled.MenuBook` 换成了 `Icons.AutoMirrored.Filled.MenuBook`，
+RTL 语言下方向才正确。
+
+### 改动后的实测
+
+release 构建仍然正常签名（APK 可安装），体积与 dex 基本不变：
+
+| 指标 | 同步前 | 同步后 |
+|---|---|---|
+| APK（armeabi-v7a） | 1.81 MB | **1.81 MB** |
+| dex 合计 | 2,792 KB | **2,836 KB**（+44 KB，+1.6%） |
+| 单元测试 | 31 | **60** |
+
+主题代码在 R8 之后仍然保留（`KlinReadTheme` / `AppColors` / `LocalColors` 均在 dex 中），
+没有因为混淆而失效。
+
+---
+
 ## 未验证的部分
 
 **UI 在手表上的实际观感我看不到。** 我只能保证编译通过、进程不崩、性能数据正确、
@@ -215,8 +289,9 @@ pwsh tools\run-tests.ps1
 还需要你在表上亲自确认：
 - 圆屏上内容有没有被裁切
 - 分类 chip 横向滚动是否顺手
-- **长按书籍弹出的操作面板**在小屏上是否好按（这是本次新增的交互）
+- **长按书籍弹出的操作面板**在小屏上是否好按
 - 阅读时翻页是否流畅
+- **新的粉色配色在手表上是否好看**（本次改动最大的一项，但配色好不好看只能靠眼睛判断）
 
 ### 已知限制
 
@@ -225,4 +300,6 @@ pwsh tools\run-tests.ps1
   本来就没有封面，一律使用生成的占位图。
 - **没有 CI**：这个工程目前只在本机构建，没有自动化测试流水线。
   （手机版有 GitHub Actions，但两边的测试集不同，不能直接共用。）
+- **`translucent` 是死代码**：设置项声明了、也持久化了，但**没有任何界面读它**，
+  渲染也不分支。留在这里是为了不动 DataStore 结构，不是还有用。
 

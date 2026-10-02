@@ -27,7 +27,7 @@ data class ReaderSettings(
      */
     val theme: ReaderTheme = ReaderTheme.SEPIA,
     /** App-wide dark appearance. */
-    val darkGlass: Boolean = false,
+    val darkTheme: Boolean = false,
     /** When false, panels are drawn more opaque. */
     val translucent: Boolean = true,
     /** How the reader advances between screens. */
@@ -57,7 +57,14 @@ class ReaderPreferences(private val context: Context) {
         val FONT_SIZE = floatPreferencesKey("font_size_sp")
         val LINE_HEIGHT = floatPreferencesKey("line_height")
         val THEME = stringPreferencesKey("theme")
-        val DARK_GLASS = booleanPreferencesKey("dark_glass")
+        // Renamed from "dark_glass" to match the phone build: the glass treatment
+        // is gone, so the old name no longer describes anything.
+        //
+        // The old key is still read as a fallback (see LEGACY_DARK_GLASS) rather
+        // than dropped, because renaming a preference outright would silently
+        // reset the appearance for anyone who had already chosen dark.
+        val DARK_THEME = booleanPreferencesKey("dark_theme")
+        val LEGACY_DARK_GLASS = booleanPreferencesKey("dark_glass")
         val TRANSLUCENT = booleanPreferencesKey("translucent")
         val PAGE_TURN = stringPreferencesKey("page_turn")
         val MARGIN = floatPreferencesKey("margin_dp")
@@ -74,7 +81,9 @@ class ReaderPreferences(private val context: Context) {
             theme = prefs[Keys.THEME]?.let { name ->
                 ReaderTheme.entries.firstOrNull { it.name == name }
             } ?: ReaderTheme.LIGHT,
-            darkGlass = prefs[Keys.DARK_GLASS] ?: false,
+            // New key first; fall back to the pre-rename key so an existing
+            // install keeps the appearance it had.
+            darkTheme = prefs[Keys.DARK_THEME] ?: prefs[Keys.LEGACY_DARK_GLASS] ?: false,
             translucent = prefs[Keys.TRANSLUCENT] ?: true,
             pageTurn = prefs[Keys.PAGE_TURN]?.let { name ->
                 PageTurnMode.entries.firstOrNull { it.name == name }
@@ -110,8 +119,8 @@ class ReaderPreferences(private val context: Context) {
         context.dataStore.edit { it[Keys.THEME] = theme.name }
     }
 
-    suspend fun setDarkGlass(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.DARK_GLASS] = enabled }
+    suspend fun setDarkTheme(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.DARK_THEME] = enabled }
     }
 
     suspend fun setTranslucent(enabled: Boolean) {

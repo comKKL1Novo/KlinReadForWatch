@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.klin.read.ui.design.LocalColors
 import com.klin.read.ui.design.RoundSlider
 import com.klin.read.ui.design.SliderColors
 
@@ -88,7 +89,9 @@ fun ReaderScreen(
             Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            Text(current.reason, color = Color(0xFF666666))
+            // Theme token rather than a fixed grey: 0xFF666666 was almost
+            // invisible against the dark canvas on the watch.
+            Text(current.reason, color = LocalColors.current.inkMuted)
         }
 
         is ReaderUiState.Ready -> {

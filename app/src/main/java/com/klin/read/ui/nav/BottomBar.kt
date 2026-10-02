@@ -17,9 +17,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -49,7 +49,7 @@ enum class HomeTab(val label: String) {
 
     val icon: ImageVector
         get() = when (this) {
-            SHELF -> Icons.Filled.MenuBook
+            SHELF -> Icons.AutoMirrored.Filled.MenuBook
             MUSIC -> Icons.Filled.LibraryMusic
             SETTINGS -> Icons.Filled.Settings
             ABOUT -> Icons.Filled.Info

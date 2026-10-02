@@ -12,9 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,8 +38,7 @@ import com.klin.read.data.ReaderPreferences
 import com.klin.read.data.ReaderSettings
 import com.klin.read.music.MusicPlayer
 import com.klin.read.ui.about.AboutScreen
-import com.klin.read.ui.design.DarkColors
-import com.klin.read.ui.design.LightColors
+import com.klin.read.ui.design.KlinReadTheme
 import com.klin.read.ui.design.LocalColors
 import com.klin.read.ui.music.MusicScreen
 import com.klin.read.ui.music.MusicViewModel
@@ -105,7 +102,7 @@ private fun ReaderApp() {
     val settings by preferences.settings.collectAsStateWithLifecycle(
         initialValue = ReaderSettings()
     )
-    val colors = if (settings.darkGlass) DarkColors else LightColors
+    val dark = settings.darkTheme
 
     // Brightness applied to this app's window.
     //
@@ -143,56 +140,54 @@ private fun ReaderApp() {
         return
     }
 
-    CompositionLocalProvider(LocalColors provides colors) {
-        MaterialTheme {
-            NavHost(navController = navController, startDestination = Routes.HOME) {
-                composable(Routes.HOME) {
-                    HomeScaffold(
-                        liveBrightness = liveBrightness.value,
-                        onBrightnessPreview = { liveBrightness.value = it },
-                        onOpenBook = { id -> navController.navigate(Routes.reader(id)) }
-                    )
-                }
+    KlinReadTheme(darkTheme = dark) {
+        NavHost(navController = navController, startDestination = Routes.HOME) {
+            composable(Routes.HOME) {
+                HomeScaffold(
+                    liveBrightness = liveBrightness.value,
+                    onBrightnessPreview = { liveBrightness.value = it },
+                    onOpenBook = { id -> navController.navigate(Routes.reader(id)) }
+                )
+            }
 
-                composable(
-                    route = Routes.READER,
-                    arguments = listOf(navArgument("bookId") { type = NavType.LongType })
-                ) { entry ->
-                    val bookId = entry.arguments?.getLong("bookId") ?: return@composable
-                    val vm: ReaderViewModel = viewModel()
-                    LaunchedEffect(bookId) { vm.load(bookId) }
-                    val musicScope = rememberCoroutineScope()
+            composable(
+                route = Routes.READER,
+                arguments = listOf(navArgument("bookId") { type = NavType.LongType })
+            ) { entry ->
+                val bookId = entry.arguments?.getLong("bookId") ?: return@composable
+                val vm: ReaderViewModel = viewModel()
+                LaunchedEffect(bookId) { vm.load(bookId) }
+                val musicScope = rememberCoroutineScope()
 
-                    // Background music follows the reader: start on entry, pause on
-                    // exit, and resume from the stored offset so leaving and
-                    // re-entering a book continues the same track where it stopped.
-                    val music = remember { MusicStore(context) }
-                    val musicState by music.state.collectAsStateWithLifecycle(
-                        initialValue = MusicState()
-                    )
-                    DisposableEffect(musicState.autoPlayInReader, musicState.currentUri) {
-                        val uri = musicState.currentUri
-                        if (musicState.autoPlayInReader && !uri.isNullOrBlank()) {
-                            MusicPlayer.setVolume(musicState.volume)
-                            MusicPlayer.setLoop(musicState.loop)
-                            MusicPlayer.play(context, uri, musicState.positionMs)
-                        }
-                        onDispose {
-                            if (musicState.autoPlayInReader) {
-                                // Capture the offset before the fade, then persist
-                                // once the audio has actually stopped, so the next
-                                // visit resumes here rather than restarting.
-                                val at = MusicPlayer.positionMs()
-                                MusicPlayer.pause { musicScope.launch { music.setPosition(at) } }
-                            }
+                // Background music follows the reader: start on entry, pause on
+                // exit, and resume from the stored offset so leaving and
+                // re-entering a book continues the same track where it stopped.
+                val music = remember { MusicStore(context) }
+                val musicState by music.state.collectAsStateWithLifecycle(
+                    initialValue = MusicState()
+                )
+                DisposableEffect(musicState.autoPlayInReader, musicState.currentUri) {
+                    val uri = musicState.currentUri
+                    if (musicState.autoPlayInReader && !uri.isNullOrBlank()) {
+                        MusicPlayer.setVolume(musicState.volume)
+                        MusicPlayer.setLoop(musicState.loop)
+                        MusicPlayer.play(context, uri, musicState.positionMs)
+                    }
+                    onDispose {
+                        if (musicState.autoPlayInReader) {
+                            // Capture the offset before the fade, then persist
+                            // once the audio has actually stopped, so the next
+                            // visit resumes here rather than restarting.
+                            val at = MusicPlayer.positionMs()
+                            MusicPlayer.pause { musicScope.launch { music.setPosition(at) } }
                         }
                     }
-
-                    ReaderScreen(
-                        viewModel = vm,
-                        onBack = { navController.popBackStack() }
-                    )
                 }
+
+                ReaderScreen(
+                    viewModel = vm,
+                    onBack = { navController.popBackStack() }
+                )
             }
         }
     }

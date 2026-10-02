@@ -63,12 +63,16 @@ $classpath = @($testClasses, $mainClasses, $junit, $hamcrest, $stdlib) -join ';'
 $java = Join-Path $JdkHome 'bin\java.exe'
 
 # ── 3. 逐个运行测试类 ───────────────────────────────────────────────────────
-# 手表版有自己的解析器测试（EpubParserTest 覆盖流式两遍扫描），
-# 所以这里不含主工程的 ChapterSplitterTest —— 两边的 ChapterSplitter 实现不同。
+# 手表版有自己的解析器测试（EpubParserTest 覆盖流式两遍扫描）。
+#
+# ChapterSplitterTest 现在也跑了：两边 split(text) 的签名与对外行为一致，
+# 手表版只是在内部加了 mayStartHeading() 快速预筛。这组测试正是那个优化的
+# 安全网 —— 如果预筛漏掉了某个真正的标题，这里会红。
 $testClassesToRun = @(
     'com.klin.read.reader.EpubParserTest',
     'com.klin.read.reader.CoverExtractorTest',
     'com.klin.read.reader.TextDecoderTest',
+    'com.klin.read.reader.ChapterSplitterTest',
     'com.klin.read.ui.music.MusicFilterTest'
 )
 
